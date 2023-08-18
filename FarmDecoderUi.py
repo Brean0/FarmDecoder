@@ -119,6 +119,7 @@ def decodeHelper(index: int, beanstalkJson: dict):
                 
             elif(value == "bytes"):
                 decodeBytes(data, startIndex)
+
             else:
                 inputData = int(data[index + 64 - 2*dataTypes[value]: index + 64],16)
                 if(value == "address"):
@@ -241,7 +242,7 @@ def decodeBytes(data: bytes, startIndex: int):
     bytesLength = int(data[bytesLengthIndex:bytesLengthIndex + 64],16)
     bytesLengthIndex += 64
     _bytesData = data[bytesLengthIndex:bytesLengthIndex + bytesLength*2]
-    st.write(_bytesData)
+    st.write('bytes: ' +'0x' + str(_bytesData)[2:-1])
 
 def executeDecodeFarm():
     with col1:
