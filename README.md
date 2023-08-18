@@ -2,21 +2,37 @@
 Decodes farm functions into readable functions. Supports advancedPipe()
 
 #Setup
-create an venv: 
+## create an venv: 
 
 ```
+python3 -m pip install venv (if not installed)
 cd FarmDecoder
-python3.10 -m venv env
+python3 -m venv env
 ```
 
-activate venv: 
+## activate venv: 
+
+windows
 ```
-source env/bin/activate
+env\Scripts\activate.bat
 ```
 
-install libraries
+linux/MacOs
+```
+source myvenv/bin/activate
+```
+
+## install libraries
 ```
 pip install -r requirements.txt
+```
+
+for windows, the readline library is not supported. line 6 in `farmDecoder.py` needs to be deleted.
+```
+from web3 import Web3
+import sys
+import readline <- delete this line
+...
 ```
 
 run:
