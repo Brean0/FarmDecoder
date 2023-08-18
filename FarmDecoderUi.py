@@ -264,6 +264,7 @@ def executeDecodeFarm():
             data = inp[2:].encode()
             with col2:
                 decodeFarm()
+                st.balloons()
     st.divider()
     st.subheader("[Github](https://github.com/Brean0/FarmDecoder)")
     st.subheader("[Beanstalk](https://app.bean.money/)")
