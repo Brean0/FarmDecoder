@@ -1,7 +1,9 @@
 # FarmDecoder
 Decodes farm functions into readable functions. Supports advancedPipe()
 
-#Setup
+Hosted on https://farmdecoder.streamlit.app/, or follow the steps outlined below for the CLI version: 
+
+# Setup
 ## create an venv: 
 
 ```
