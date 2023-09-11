@@ -7,6 +7,7 @@ import readline
 import streamlit as st
 import pandas as pd
 import requests
+import math
 
 
 # global variables
@@ -59,6 +60,7 @@ def jsonToSelectors():
             functionSelector = Web3.solidity_keccak(["string"],[stringThing]).hex()[:10]
             outDict[functionSelector] = {function['name']: inputList}
         outDict['0xb452c7ae'] = {'advancedPipe': ['advancedPipeCall[]','uint256']} ## advancedPipe
+        outDict['0x36bfafbd'] = {'advancedFarm': ['advancedFarmCall[]','uint256']} ## advancedFarm
     with open('Well.json') as json_file: 
         _json = json.load(json_file)['abi']
         # loop through each function
@@ -85,6 +87,7 @@ def jsonToSelectors():
 # given data, index, and json, get the selector data 
 def getSelectorData(index: int, beanstalkJson: dict):
     selector = '0x' + data[index:index+8].decode('utf-8')
+    st.write("Function Selector: ", selector)
     function = beanstalkJson[selector]
     st.subheader("Function Selector and Name: " + selector + " , " + list(function.keys())[0])
     st.write("Function Inputs: " + str(list(function.values())[0]))
@@ -147,6 +150,8 @@ def decodeFarm():
     lengthOfBytesArray = int(data[index:index + 64],16)
     index += 64
     st.write("Farm contains", str(lengthOfBytesArray), "Functions!")
+    st.write("lengthOfBytesPos", lengthOfBytesPos)
+
 
     # get the lengths of each bytes element
     for i in range(lengthOfBytesArray):
@@ -156,6 +161,78 @@ def decodeFarm():
         startOfFunction = startOfLengthOfbytes + 64
         decodeHelper(startOfFunction, beanstalkJson)
 
+def decodeAdvancedFarm():
+    st.header('Results:')
+    with open('selectors.pickle', 'rb') as handle:
+        beanstalkJson = pickle.load(handle)
+    if(data == "0x"):
+        return
+    index = 0
+    # get selector
+    function = getSelectorData(index, beanstalkJson)
+    index +=8
+    # next 32 bytes represent the position of where the length of advancedFarm[] is stored: 
+    lengthPos = int(data[index:index + 64], 16)
+    index += lengthPos*2
+    lengthOfAdvancedFarmArray = int(data[index:index + 64],16)
+    index += 64
+    st.write("AdvancedFarm contains", str(lengthOfAdvancedFarmArray), "Functions!")
+    clipboardData = []
+    # get the location of the advancedFarmCall array
+    for i in range(lengthOfAdvancedFarmArray):
+        # advanced farm call has 2 bytes array 
+        locOfBytesPos = int(data[BYTES_ARRAY_INDEX + i*64:BYTES_ARRAY_INDEX + (i+1)*64], 16)
+        # st.write("locOfBytesPos", locOfBytesPos)
+        FirstBytesPos = BYTES_ARRAY_INDEX + locOfBytesPos*2
+        # st.write("FirstBytesPos", FirstBytesPos)
+        for j in range(2):
+            # get the location of the bytes length:
+            LocationBytes = int(data[FirstBytesPos + j*64:FirstBytesPos + (j+1)*64],16)
+            # st.write("LocationBytes", LocationBytes)
+            byteLengthLocation = FirstBytesPos + LocationBytes*2
+            # st.write("byteLengthLocation", byteLengthLocation)
+            lengthOfBytes = int(data[byteLengthLocation:byteLengthLocation + 64],16)
+            # st.write("lengthOfBytes", lengthOfBytes)
+            # st.write("------------------")
+            # calldata
+            if(j == 0):
+                decodeHelper(byteLengthLocation + 64, beanstalkJson)
+            else:
+                _bytesData = data[byteLengthLocation + 64:byteLengthLocation + 64 + lengthOfBytes*2]
+                clipboardData.append(_bytesData)
+                decodeClipboard(_bytesData, True, clipboardData)
+
+def decodeClipboard(_bytesData, isAdvancedFarmClipboard, clipboardData):
+    if(isAdvancedFarmClipboard):
+        st.subheader('AdvancedFarmClipboard:')
+    else:
+        st.subheader('PipelineClipboard:')
+    # clipboard is decoded as such:
+    # first byte determines whether to use ether.
+    # second byte determines the clipboardType:
+    clipboardType = int(_bytesData[0:2])
+    ethFlag = int(_bytesData[2:4])
+    st.write("useEthFlag:", str(bool(ethFlag)))
+    st.write("clipboardType:", str(clipboardType))
+    if(clipboardType == 0): 
+        # type 0 means that the clipboard is not used.
+        if(ethFlag == 1):
+            st.write("ethAmount:", str(int(_bytesData[62:],16)))
+    elif(clipboardType == 1):
+        # type 1 means that only 32 bytes of data is used
+        st.write("clipboardData:", str(_bytesData[4:]))
+        # bytes 2 - 11 specify the returnDataIndex of the function
+        st.write("returnDataIndex:", str(int(_bytesData[4:24])))
+        # bytes 12 - 21 specify the copyIndex of the function
+        st.write("copyIndex:", str(((int(_bytesData[26:44],16) - 32) / 32)))
+        # bytes 22 - 31 specify the pasteIndex of the function
+        st.write("pasteIndex:", str((int(_bytesData[47:64],16) - 36) / 32))
+        # bytes 32 - 63 is the the amount of eth used (if applicable)
+        if(ethFlag == 1):
+            st.write("ethAmount:", str(_bytesData[62:]))
+    else:
+        # type 2 means n bytes are being used.
+        st.write("clipboardData:", str(_bytesData[4:]))
 def getSelector(selector: str):
     with open('selectors.pickle', 'rb') as handle:
         beanstalkJson = pickle.load(handle) 
@@ -179,9 +256,10 @@ def decodeArray(data: bytes, startIndex: int, index: int, value: str):
 
     arrayOutput = []
     lengthPosIndex += 64
+    pipelineClipboard = []
     for i in range(arrayLength):
         if(dataTypes[value] == 69): ## advancedPipeCall is a tuple, and needs special care
-            output = decodeAdvancedPipe(data, lengthPosIndex, "advancedPipe", i)
+            output = decodeAdvancedPipe(data, lengthPosIndex, "advancedPipe", i, pipelineClipboard)
             # arrayOutput.append(output)
         else:
             output = int(data[lengthPosIndex + (i * 64): lengthPosIndex + ((i + 1) * 64)],16)
@@ -195,10 +273,10 @@ def decodeArray(data: bytes, startIndex: int, index: int, value: str):
         st.write(value + "[]: " + str(arrayOutput))
     return index
 
-def decodeAdvancedPipe(data: bytes, startIndex: int, value: str, i: int):
+def decodeAdvancedPipe(data: bytes, startIndex: int, value: str, m: int, pipelineClipboard):
     advancedData = []
      # first 32 bytes determine the location of the data of the array
-    _lengthData = data[startIndex + (64 * i) :startIndex + (64 * (i+1))]
+    _lengthData = data[startIndex + (64 * m) :startIndex + (64 * (m+1))]
     lengthData = int(_lengthData,16)
 
     lengthDataIndex = startIndex + lengthData*2
@@ -233,7 +311,10 @@ def decodeAdvancedPipe(data: bytes, startIndex: int, value: str, i: int):
                     st.write(str(j) + ": " + '0x' + str(hex(bytesData)[10 + (j-1)*64:10 + j*64])[2:-1])
                     stuff.append("  data " + str(j) + ": " + '0x' + str(hex(bytesData)[10 + (j-1)*64:10 + j*64])[2:-1])
         else:
+            pipelineClipboard.append(_bytesData)
             st.write(" Clipboard: " + '0x' + str(_bytesData)[2:-1])
+            decodeClipboard(_bytesData, False, pipelineClipboard)
+            st.write()
 
 def decodeBytes(data: bytes, startIndex: int):
     # first 32 bytes determine the location of the length of the bytes
@@ -253,18 +334,24 @@ def executeDecodeFarm():
         # if you want to regenerate the selectors, delete the pickle file. 
         if(os.path.isfile('./selectors.pickle') == False):
             jsonToSelectors()
-        # inp = "0x300dd6cf0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000a46204aa43000000000000000000000000bea0000029ad1c77d3d5d23ba2d8893db9d1efab000000000000000000000000bea0e11282e2bb5893bece110cf199501e872bad0000000000000000000000000000000000000000000000000000000005f5e10000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000484b452c7ae0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000bea0e11282e2bb5893bece110cf199501e872bad000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000044ef4fcafa000000000000000000000000b1be0000c6b3c62749b5f0c92480146452d154230000000000000000000000000000000000000000000000001a7948c8c29522aa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bea0e11282e2bb5893bece110cf199501e872bad000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000c1e088fc1323b20bcbee9bd1b9fc9546db5624c50000000000000000000000000000000000000000000000001a801181772e86a40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c1e088fc1323b20bcbee9bd1b9fc9546db5624c50000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000a46204aa43000000000000000000000000bea0e11282e2bb5893bece110cf199501e872bad000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000000000000000000000000000000000001a801181772e86a4000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064f19ed6be000000000000000000000000bea0e11282e2bb5893bece110cf199501e872bad0000000000000000000000000000000000000000000000001a801181772e86a4000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000"
-        inp = st.text_input('Please input farm data (0x300dd6cf..)')
+        inp = st.text_input('Please input farm data (0x300dd6cf.. or 0x36bfafbd..)')
         if(inp == ''):
             return
-        elif('0x300dd6cf' not in inp):
+        elif('0x300dd6cf' not in inp and '0x36bfafbd' not in inp):
             st.write("Incorrect Input")
         else:
-            st.write('Input Data:', inp)
-            data = inp[2:].encode()
-            with col2:
-                decodeFarm()
-                st.balloons()
+            if('0x300dd6cf' in inp):
+                st.write('Input Data:', inp)
+                data = inp[2:].encode()
+                with col2:
+                    decodeFarm()
+                    st.balloons()
+            else:
+                st.write('Input Data:', inp)
+                data = inp[2:].encode()
+                with col2:
+                    decodeAdvancedFarm()
+                    st.balloons()
     st.divider()
     st.subheader("[Github](https://github.com/Brean0/FarmDecoder)")
     st.subheader("[Beanstalk](https://app.bean.money/)")
