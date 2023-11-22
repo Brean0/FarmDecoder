@@ -150,7 +150,6 @@ def decodeFarm():
     lengthOfBytesArray = int(data[index:index + 64],16)
     index += 64
     st.write("Farm contains", str(lengthOfBytesArray), "Functions!")
-    st.write("lengthOfBytesPos", lengthOfBytesPos)
 
 
     # get the lengths of each bytes element
@@ -294,8 +293,11 @@ def decodeAdvancedPipe(data: bytes, startIndex: int, value: str, m: int, pipelin
         _bytesLength = data[bytesLengthIndex:bytesLengthIndex + 64]
         bytesLengthIndex += 64
         bytesLength = int(_bytesLength,16)
-        _bytesData = data[bytesLengthIndex:bytesLengthIndex + bytesLength*2] 
-        bytesData = int(_bytesData,16)
+        _bytesData = data[bytesLengthIndex:bytesLengthIndex + bytesLength*2]
+        if(_bytesData != b''):
+            bytesData = int(_bytesData,16)
+        else:
+            bytesData = int(0)
         stuff = []
         loop = 0
         if(i == 0):
